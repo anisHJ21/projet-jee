@@ -1,0 +1,66 @@
+1 Contexte :
+Une municipalité en pleine expansion fait face à une augmentation considérable de la production de déchets
+due à la croissance démographique et à l’urbanisation rapide. Cette situation a engendré plusieurs
+difficultés :
+• Inefficacité dans la planification des tournées de collecte, entraînant des trajets longs, des surcoûts en
+carburant et une forte émission de CO2.
+• Manque de suivi en temps réel du niveau de remplissage des conteneurs, ce qui provoque des
+débordements et des nuisances dans certains quartiers.
+• Absence de coordination entre les services de la propreté, de la voirie et de l’environnement, limitant la
+réutilisation ou le recyclage des déchets.
+• Difficulté à obtenir des indicateurs fiables sur la performance du service, le taux de recyclage et l’impact
+environnemental des opérations de collecte.
+Pour répondre à ces défis, la municipalité souhaite mettre en place un système intelligent de gestion des
+déchets urbains permettant de :
+• Optimiser les tournées de collecte,
+• Gérer les points de collecte, les véhicules et les agents de propreté,
+• Faciliter l’interopérabilité entre les services municipaux à travers des échanges de données structurées.
+2 Objectifs du projet :
+• Centraliser la gestion des déchets urbains : créer une plateforme intégrée pour gérer les points de collecte,
+les véhicules, les agents et les tournées.
+• Optimiser les ressources : planifier les itinéraires selon le remplissage des conteneurs et la disponibilité
+des véhicules et du personnel.
+• Améliorer la durabilité environnementale : réduire les émissions liées aux trajets et favoriser le tri et le
+recyclage.
+3 Fonctionnalités à implémenter : 
+• Plateforme numérique de gestion des déchets urbains :
+➢ Application web centralisée permettant la gestion des points de collecte, des véhicules et des
+employés.
+➢ Carte interactive pour visualiser les points de collecte avec leur niveau de remplissage et leur statut.
+➢ Notifications automatiques en cas de conteneur plein ou d’incident sur le trajet.
+
+• Gestion des points de collecte :
+➢ Ajout, suppression et mise à jour des points de collecte.
+➢ Informations stockées : localisation, type de déchet (plastique, organique, verre...), niveau de
+remplissage, état du conteneur.
+• Gestion des employés et des tournées :
+➢ Affectation automatique des employés à des zones de collecte selon leurs disponibilités et leurs
+compétences.
+➢ Planification intelligente des tournées basée sur la distance, la capacité des véhicules et le niveau de
+remplissage des points.
+
+
+4 Technologies demandées:
+4.1 Backend :
+
+
+La partie Backend du projet porte sur le développement d’une API web qui comporte, pour chaque cas
+d’utilisation, les différentes couches logicielles (Contrôleurs, Services, DAO et Entity) en assurant l’injection
+de dépendances entre elles. Le développement de la partie DAO peut se baser sur les entityManager et JPA
+ou bien sur SpringData(à choisir selon les exigences de projet)
+
+Vous devez tester l’interaction avec la partie Frontend simple avec React et la partie base de données tout en illustrant des
+scénarios nominaux et alternatifs. Vous devez utiliser Springboot comme framework de développement de
+l’API
+Vous pouvez, éventuellement, intégrer d’autres API dans votre projet comme l’API Log4j pour la gestion des
+fichiers log et Junit pour la mise en place des tests unitaires, ...
+4.3 Base de données : SGBD NOSQL ( MongoDB)
+• Schéma NOSQl :
+o Modélisation du schéma NoSQL avec justification des choix de structuration
+o Description des règles de transformation de la couche Model (diagramme de classe) vers le
+schéma NoSQL
+
+• API de persistance : Présentation de l’API de persistance de données avec justification du choix de
+l’API
+5 Résultats attendus :
+Une application web fonctionnelle réalisant les fonctionnalités demandées.
