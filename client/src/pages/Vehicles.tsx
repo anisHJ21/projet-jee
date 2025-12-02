@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { VehicleCard, Vehicle } from "@/components/VehicleCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,86 +36,29 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Search, Filter } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { Vehicle as DbVehicle, InsertVehicle } from "@shared/schema";
 
-// todo: remove mock functionality
-const initialVehicles: Vehicle[] = [
-  {
-    id: "1",
-    plateNumber: "TU-1234-AB",
-    type: "compactor",
-    status: "available",
-    capacity: 8000,
-    currentLoad: 0,
-    fuelLevel: 85,
-    lastMaintenance: "Nov 28, 2024",
-    assignedDriver: undefined,
-    currentRoute: undefined,
-  },
-  {
-    id: "2",
-    plateNumber: "TU-5678-CD",
-    type: "side_loader",
-    status: "in_use",
-    capacity: 6000,
-    currentLoad: 4200,
-    fuelLevel: 45,
-    lastMaintenance: "Nov 15, 2024",
-    assignedDriver: "Ahmed Ben Salem",
-    currentRoute: "North District - Morning",
-  },
-  {
-    id: "3",
-    plateNumber: "TU-9012-EF",
-    type: "rear_loader",
-    status: "maintenance",
-    capacity: 10000,
-    currentLoad: 0,
-    fuelLevel: 20,
-    lastMaintenance: "Dec 1, 2024",
-    assignedDriver: undefined,
-    currentRoute: undefined,
-  },
-  {
-    id: "4",
-    plateNumber: "TU-3456-GH",
-    type: "compactor",
-    status: "in_use",
-    capacity: 8000,
-    currentLoad: 5600,
-    fuelLevel: 62,
-    lastMaintenance: "Nov 20, 2024",
-    assignedDriver: "Karim Souissi",
-    currentRoute: "Central District - Morning",
-  },
-  {
-    id: "5",
-    plateNumber: "TU-7890-IJ",
-    type: "tipper",
-    status: "available",
-    capacity: 12000,
-    currentLoad: 0,
-    fuelLevel: 95,
-    lastMaintenance: "Nov 25, 2024",
-    assignedDriver: undefined,
-    currentRoute: undefined,
-  },
-  {
-    id: "6",
-    plateNumber: "TU-2468-KL",
-    type: "side_loader",
-    status: "out_of_service",
-    capacity: 6000,
-    currentLoad: 0,
-    fuelLevel: 10,
-    lastMaintenance: "Oct 15, 2024",
-    assignedDriver: undefined,
-    currentRoute: undefined,
-  },
-];
+function transformToFrontend(v: DbVehicle): Vehicle {
+  return {
+    id: v.id,
+    plateNumber: v.plateNumber,
+    type: v.type as Vehicle["type"],
+    status: v.status as Vehicle["status"],
+    capacity: v.capacity,
+    currentLoad: v.currentLoad,
+    fuelLevel: v.fuelLevel,
+    lastMaintenance: v.lastMaintenance,
+    assignedDriver: v.assignedDriver ?? undefined,
+    currentRoute: v.currentRoute ?? undefined,
+  };
+}
 
 const vehicleFormSchema = z.object({
   plateNumber: z.string().min(6, "Plate number must be at least 6 characters"),
@@ -130,7 +74,7 @@ const vehicleFormSchema = z.object({
 type VehicleFormValues = z.infer<typeof vehicleFormSchema>;
 
 export default function Vehicles() {
-  const [vehicles, setVehicles] = useState(initialVehicles);
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -147,6 +91,73 @@ export default function Vehicles() {
       status: "available",
       capacity: "8000",
       fuelLevel: "100",
+    },
+  });
+
+  const { data: dbVehicles = [], isLoading } = useQuery<DbVehicle[]>({
+    queryKey: ["/api/vehicles"],
+  });
+
+  const vehicles = dbVehicles.map(transformToFrontend);
+
+  const createMutation = useMutation({
+    mutationFn: async (values: VehicleFormValues) => {
+      const data: InsertVehicle = {
+        plateNumber: values.plateNumber,
+        type: values.type,
+        status: values.status,
+        capacity: parseInt(values.capacity),
+        currentLoad: 0,
+        fuelLevel: parseInt(values.fuelLevel),
+        lastMaintenance: new Date().toLocaleDateString("en-US", {
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        }),
+      };
+      const res = await apiRequest("POST", "/api/vehicles", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
+      toast({ title: "Vehicle created successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create vehicle", variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, values }: { id: string; values: VehicleFormValues }) => {
+      const data = {
+        plateNumber: values.plateNumber,
+        type: values.type,
+        status: values.status,
+        capacity: parseInt(values.capacity),
+        fuelLevel: parseInt(values.fuelLevel),
+      };
+      const res = await apiRequest("PATCH", `/api/vehicles/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
+      toast({ title: "Vehicle updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update vehicle", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/vehicles/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/vehicles"] });
+      toast({ title: "Vehicle deleted successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete vehicle", variant: "destructive" });
     },
   });
 
@@ -184,36 +195,9 @@ export default function Vehicles() {
 
   const handleSubmit = (values: VehicleFormValues) => {
     if (editingVehicle) {
-      setVehicles((prev) =>
-        prev.map((v) =>
-          v.id === editingVehicle.id
-            ? {
-                ...v,
-                plateNumber: values.plateNumber,
-                type: values.type,
-                status: values.status,
-                capacity: parseInt(values.capacity),
-                fuelLevel: parseInt(values.fuelLevel),
-              }
-            : v
-        )
-      );
+      updateMutation.mutate({ id: editingVehicle.id, values });
     } else {
-      const newVehicle: Vehicle = {
-        id: Date.now().toString(),
-        plateNumber: values.plateNumber,
-        type: values.type,
-        status: values.status,
-        capacity: parseInt(values.capacity),
-        currentLoad: 0,
-        fuelLevel: parseInt(values.fuelLevel),
-        lastMaintenance: new Date().toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        }),
-      };
-      setVehicles((prev) => [...prev, newVehicle]);
+      createMutation.mutate(values);
     }
     setAddDialogOpen(false);
     setEditingVehicle(undefined);
@@ -222,11 +206,35 @@ export default function Vehicles() {
 
   const handleDeleteVehicle = () => {
     if (vehicleToDelete) {
-      setVehicles((prev) => prev.filter((v) => v.id !== vehicleToDelete));
+      deleteMutation.mutate(vehicleToDelete);
       setVehicleToDelete(null);
       setDeleteDialogOpen(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <Skeleton className="h-9 w-32 mb-2" />
+            <Skeleton className="h-5 w-64" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="flex items-center gap-4 flex-wrap">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-10 w-36" />
+          <Skeleton className="h-10 w-40" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} className="h-64" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">

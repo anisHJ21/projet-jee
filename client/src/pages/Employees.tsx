@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { EmployeeCard, Employee } from "@/components/EmployeeCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,80 +36,28 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Search, Filter } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { Employee as DbEmployee, InsertEmployee } from "@shared/schema";
 
-// todo: remove mock functionality
-const initialEmployees: Employee[] = [
-  {
-    id: "1",
-    name: "Ahmed Ben Salem",
-    role: "driver",
-    status: "available",
-    phone: "+216 98 123 456",
-    email: "ahmed.bensalem@municipality.tn",
-    assignedZone: undefined,
-    shiftsThisWeek: 3,
-    joinDate: "2022-03-15",
-  },
-  {
-    id: "2",
-    name: "Fatima Bouazizi",
-    role: "collector",
-    status: "on_duty",
-    phone: "+216 97 654 321",
-    email: "fatima.b@municipality.tn",
-    assignedZone: "North District",
-    shiftsThisWeek: 5,
-    joinDate: "2021-08-20",
-  },
-  {
-    id: "3",
-    name: "Mohamed Trabelsi",
-    role: "supervisor",
-    status: "on_leave",
-    phone: "+216 95 111 222",
-    email: "m.trabelsi@municipality.tn",
-    assignedZone: undefined,
-    shiftsThisWeek: 0,
-    joinDate: "2020-01-10",
-  },
-  {
-    id: "4",
-    name: "Karim Souissi",
-    role: "driver",
-    status: "on_duty",
-    phone: "+216 96 333 444",
-    email: "k.souissi@municipality.tn",
-    assignedZone: "Central District",
-    shiftsThisWeek: 4,
-    joinDate: "2021-05-12",
-  },
-  {
-    id: "5",
-    name: "Leila Hamdi",
-    role: "technician",
-    status: "available",
-    phone: "+216 99 555 666",
-    email: "l.hamdi@municipality.tn",
-    assignedZone: undefined,
-    shiftsThisWeek: 2,
-    joinDate: "2023-01-05",
-  },
-  {
-    id: "6",
-    name: "Sami Mejri",
-    role: "collector",
-    status: "off_duty",
-    phone: "+216 98 777 888",
-    email: "s.mejri@municipality.tn",
-    assignedZone: undefined,
-    shiftsThisWeek: 5,
-    joinDate: "2022-09-01",
-  },
-];
+function transformToFrontend(emp: DbEmployee): Employee {
+  return {
+    id: emp.id,
+    name: emp.name,
+    role: emp.role as Employee["role"],
+    status: emp.status as Employee["status"],
+    phone: emp.phone,
+    email: emp.email,
+    assignedZone: emp.assignedZone ?? undefined,
+    shiftsThisWeek: emp.shiftsThisWeek,
+    joinDate: emp.joinDate,
+  };
+}
 
 const employeeFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters"),
@@ -121,7 +70,7 @@ const employeeFormSchema = z.object({
 type EmployeeFormValues = z.infer<typeof employeeFormSchema>;
 
 export default function Employees() {
-  const [employees, setEmployees] = useState(initialEmployees);
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -138,6 +87,65 @@ export default function Employees() {
       status: "available",
       phone: "",
       email: "",
+    },
+  });
+
+  const { data: dbEmployees = [], isLoading } = useQuery<DbEmployee[]>({
+    queryKey: ["/api/employees"],
+  });
+
+  const employees = dbEmployees.map(transformToFrontend);
+
+  const createMutation = useMutation({
+    mutationFn: async (values: EmployeeFormValues) => {
+      const data: InsertEmployee = {
+        name: values.name,
+        role: values.role,
+        status: values.status,
+        phone: values.phone,
+        email: values.email,
+        shiftsThisWeek: 0,
+        joinDate: new Date().toISOString().split("T")[0],
+      };
+      const res = await apiRequest("POST", "/api/employees", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Employee created successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create employee", variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, values }: { id: string; values: EmployeeFormValues }) => {
+      const res = await apiRequest("PATCH", `/api/employees/${id}`, values);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Employee updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update employee", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/employees/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/employees"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Employee deleted successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete employee", variant: "destructive" });
     },
   });
 
@@ -175,21 +183,9 @@ export default function Employees() {
 
   const handleSubmit = (values: EmployeeFormValues) => {
     if (editingEmployee) {
-      setEmployees((prev) =>
-        prev.map((e) =>
-          e.id === editingEmployee.id
-            ? { ...e, ...values }
-            : e
-        )
-      );
+      updateMutation.mutate({ id: editingEmployee.id, values });
     } else {
-      const newEmployee: Employee = {
-        ...values,
-        id: Date.now().toString(),
-        shiftsThisWeek: 0,
-        joinDate: new Date().toISOString().split("T")[0],
-      };
-      setEmployees((prev) => [...prev, newEmployee]);
+      createMutation.mutate(values);
     }
     setAddDialogOpen(false);
     setEditingEmployee(undefined);
@@ -198,11 +194,35 @@ export default function Employees() {
 
   const handleDeleteEmployee = () => {
     if (employeeToDelete) {
-      setEmployees((prev) => prev.filter((e) => e.id !== employeeToDelete));
+      deleteMutation.mutate(employeeToDelete);
       setEmployeeToDelete(null);
       setDeleteDialogOpen(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <Skeleton className="h-9 w-40 mb-2" />
+            <Skeleton className="h-5 w-72" />
+          </div>
+          <Skeleton className="h-10 w-36" />
+        </div>
+        <div className="flex items-center gap-4 flex-wrap">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-10 w-32" />
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} className="h-56" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">

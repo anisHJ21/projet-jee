@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import { queryClient, apiRequest } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -15,34 +15,18 @@ import CollectionPoints from "@/pages/CollectionPoints";
 import Employees from "@/pages/Employees";
 import Vehicles from "@/pages/Vehicles";
 import Routes from "@/pages/Routes";
+import type { Notification as DbNotification } from "@shared/schema";
 
-// todo: remove mock functionality
-const initialNotifications: Notification[] = [
-  {
-    id: "1",
-    type: "alert",
-    title: "Container Full",
-    message: "Container at Central Plaza has reached 95% capacity.",
-    timestamp: "5 minutes ago",
-    read: false,
-  },
-  {
-    id: "2",
-    type: "warning",
-    title: "Low Fuel Alert",
-    message: "Vehicle TU-5678-CD has fuel level below 25%.",
-    timestamp: "15 minutes ago",
-    read: false,
-  },
-  {
-    id: "3",
-    type: "success",
-    title: "Route Completed",
-    message: "Morning collection in North District completed.",
-    timestamp: "1 hour ago",
-    read: true,
-  },
-];
+function transformNotification(n: DbNotification): Notification {
+  return {
+    id: n.id,
+    type: n.type as Notification["type"],
+    title: n.title,
+    message: n.message,
+    timestamp: n.timestamp,
+    read: n.read,
+  };
+}
 
 function Router() {
   return (
@@ -57,21 +41,50 @@ function Router() {
   );
 }
 
-function App() {
-  const [notifications, setNotifications] = useState(initialNotifications);
+function AppContent() {
+  const { data: dbNotifications = [] } = useQuery<DbNotification[]>({
+    queryKey: ["/api/notifications"],
+  });
+
+  const notifications = dbNotifications.map(transformNotification);
+
+  const markAsReadMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("PATCH", `/api/notifications/${id}`, { read: true });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+    },
+  });
+
+  const markAllAsReadMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/notifications/mark-all-read");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+    },
+  });
+
+  const dismissMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/notifications/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+    },
+  });
 
   const handleMarkAsRead = (id: string) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n))
-    );
+    markAsReadMutation.mutate(id);
   };
 
   const handleMarkAllAsRead = () => {
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+    markAllAsReadMutation.mutate();
   };
 
   const handleDismiss = (id: string) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
+    dismissMutation.mutate(id);
   };
 
   const sidebarStyle = {
@@ -80,36 +93,42 @@ function App() {
   };
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="light" storageKey="ecocollect-theme">
-        <TooltipProvider>
-          <SidebarProvider style={sidebarStyle as React.CSSProperties}>
-            <div className="flex h-screen w-full">
-              <AppSidebar />
-              <div className="flex flex-col flex-1 overflow-hidden">
-                <header className="flex items-center justify-between gap-4 px-4 py-3 border-b bg-background">
-                  <div className="flex items-center gap-2">
-                    <SidebarTrigger data-testid="button-sidebar-toggle" />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <NotificationBell
-                      notifications={notifications}
-                      onMarkAsRead={handleMarkAsRead}
-                      onMarkAllAsRead={handleMarkAllAsRead}
-                      onDismiss={handleDismiss}
-                    />
-                    <ThemeToggle />
-                  </div>
-                </header>
-                <main className="flex-1 overflow-auto bg-background">
-                  <Router />
-                </main>
-              </div>
+    <ThemeProvider defaultTheme="light" storageKey="ecocollect-theme">
+      <TooltipProvider>
+        <SidebarProvider style={sidebarStyle as React.CSSProperties}>
+          <div className="flex h-screen w-full">
+            <AppSidebar />
+            <div className="flex flex-col flex-1 overflow-hidden">
+              <header className="flex items-center justify-between gap-4 px-4 py-3 border-b bg-background">
+                <div className="flex items-center gap-2">
+                  <SidebarTrigger data-testid="button-sidebar-toggle" />
+                </div>
+                <div className="flex items-center gap-2">
+                  <NotificationBell
+                    notifications={notifications}
+                    onMarkAsRead={handleMarkAsRead}
+                    onMarkAllAsRead={handleMarkAllAsRead}
+                    onDismiss={handleDismiss}
+                  />
+                  <ThemeToggle />
+                </div>
+              </header>
+              <main className="flex-1 overflow-auto bg-background">
+                <Router />
+              </main>
             </div>
-          </SidebarProvider>
-          <Toaster />
-        </TooltipProvider>
-      </ThemeProvider>
+          </div>
+        </SidebarProvider>
+        <Toaster />
+      </TooltipProvider>
+    </ThemeProvider>
+  );
+}
+
+function App() {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <AppContent />
     </QueryClientProvider>
   );
 }

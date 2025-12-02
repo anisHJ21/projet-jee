@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { CollectionPointCard, CollectionPoint } from "@/components/CollectionPointCard";
 import { CollectionMap } from "@/components/CollectionMap";
 import { AddCollectionPointDialog } from "@/components/AddCollectionPointDialog";
@@ -12,6 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Search, Map, LayoutGrid, Filter } from "lucide-react";
 import {
   AlertDialog,
@@ -23,73 +25,38 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { CollectionPoint as DbCollectionPoint, InsertCollectionPoint } from "@shared/schema";
 
-// todo: remove mock functionality
-const initialPoints: CollectionPoint[] = [
-  {
-    id: "1",
-    name: "Central Plaza Container",
-    address: "123 Main Street, Tunis",
-    wasteType: "plastic",
-    fillLevel: 45,
-    status: "operational",
-    lastCollected: "2 hours ago",
-    coordinates: { lat: 36.8065, lng: 10.1815 },
-  },
-  {
-    id: "2",
-    name: "North District Bin",
-    address: "456 Oak Avenue, Tunis",
-    wasteType: "organic",
-    fillLevel: 92,
-    status: "full",
-    lastCollected: "1 day ago",
-    coordinates: { lat: 36.8165, lng: 10.1715 },
-  },
-  {
-    id: "3",
-    name: "Market Square Container",
-    address: "789 Commerce Blvd, Tunis",
-    wasteType: "glass",
-    fillLevel: 68,
-    status: "operational",
-    lastCollected: "4 hours ago",
-    coordinates: { lat: 36.7965, lng: 10.1915 },
-  },
-  {
-    id: "4",
-    name: "South Gate Bin",
-    address: "321 Southern Road, Tunis",
-    wasteType: "paper",
-    fillLevel: 25,
-    status: "operational",
-    lastCollected: "6 hours ago",
-    coordinates: { lat: 36.7865, lng: 10.1815 },
-  },
-  {
-    id: "5",
-    name: "Industrial Zone Container",
-    address: "555 Factory Lane, Tunis",
-    wasteType: "metal",
-    fillLevel: 78,
-    status: "maintenance",
-    lastCollected: "12 hours ago",
-    coordinates: { lat: 36.8265, lng: 10.2015 },
-  },
-  {
-    id: "6",
-    name: "Residential Area East",
-    address: "890 East Boulevard, Tunis",
-    wasteType: "mixed",
-    fillLevel: 55,
-    status: "operational",
-    lastCollected: "3 hours ago",
-    coordinates: { lat: 36.8100, lng: 10.2100 },
-  },
-];
+function transformToFrontend(point: DbCollectionPoint): CollectionPoint {
+  return {
+    id: point.id,
+    name: point.name,
+    address: point.address,
+    wasteType: point.wasteType as CollectionPoint["wasteType"],
+    fillLevel: point.fillLevel,
+    status: point.status as CollectionPoint["status"],
+    lastCollected: point.lastCollected ?? undefined,
+    coordinates: { lat: point.latitude, lng: point.longitude },
+  };
+}
+
+function transformToBackend(point: Omit<CollectionPoint, "id">): InsertCollectionPoint {
+  return {
+    name: point.name,
+    address: point.address,
+    wasteType: point.wasteType,
+    fillLevel: point.fillLevel,
+    status: point.status,
+    lastCollected: point.lastCollected ?? null,
+    latitude: point.coordinates.lat,
+    longitude: point.coordinates.lng,
+  };
+}
 
 export default function CollectionPoints() {
-  const [points, setPoints] = useState(initialPoints);
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [wasteTypeFilter, setWasteTypeFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -98,6 +65,56 @@ export default function CollectionPoints() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [pointToDelete, setPointToDelete] = useState<string | null>(null);
   const [selectedPoint, setSelectedPoint] = useState<CollectionPoint | undefined>();
+
+  const { data: dbPoints = [], isLoading } = useQuery<DbCollectionPoint[]>({
+    queryKey: ["/api/collection-points"],
+  });
+
+  const points = dbPoints.map(transformToFrontend);
+
+  const createMutation = useMutation({
+    mutationFn: async (data: Omit<CollectionPoint, "id">) => {
+      const res = await apiRequest("POST", "/api/collection-points", transformToBackend(data));
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/collection-points"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Collection point created successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create collection point", variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Omit<CollectionPoint, "id"> }) => {
+      const res = await apiRequest("PATCH", `/api/collection-points/${id}`, transformToBackend(data));
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/collection-points"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Collection point updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update collection point", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/collection-points/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/collection-points"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Collection point deleted successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete collection point", variant: "destructive" });
+    },
+  });
 
   const filteredPoints = points.filter((point) => {
     const matchesSearch =
@@ -111,29 +128,47 @@ export default function CollectionPoints() {
   });
 
   const handleAddPoint = (data: Omit<CollectionPoint, "id">) => {
-    const newPoint: CollectionPoint = {
-      ...data,
-      id: Date.now().toString(),
-    };
-    setPoints((prev) => [...prev, newPoint]);
+    createMutation.mutate(data);
   };
 
   const handleEditPoint = (data: Omit<CollectionPoint, "id">) => {
     if (editingPoint) {
-      setPoints((prev) =>
-        prev.map((p) => (p.id === editingPoint.id ? { ...data, id: editingPoint.id } : p))
-      );
+      updateMutation.mutate({ id: editingPoint.id, data });
       setEditingPoint(undefined);
     }
   };
 
   const handleDeletePoint = () => {
     if (pointToDelete) {
-      setPoints((prev) => prev.filter((p) => p.id !== pointToDelete));
+      deleteMutation.mutate(pointToDelete);
       setPointToDelete(null);
       setDeleteDialogOpen(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <Skeleton className="h-9 w-56 mb-2" />
+            <Skeleton className="h-5 w-96" />
+          </div>
+          <Skeleton className="h-10 w-48" />
+        </div>
+        <div className="flex items-center gap-4 flex-wrap">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-10 w-36" />
+          <Skeleton className="h-10 w-36" />
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} className="h-56" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">

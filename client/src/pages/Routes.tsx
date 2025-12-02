@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { RouteCard, CollectionRoute } from "@/components/RouteCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,93 +26,31 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Plus, Search, Filter, Calendar } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import type { Route as DbRoute, InsertRoute } from "@shared/schema";
 
-// todo: remove mock functionality
-const initialRoutes: CollectionRoute[] = [
-  {
-    id: "1",
-    name: "Morning Collection - North",
-    status: "in_progress",
-    zone: "North District",
-    scheduledTime: "06:00 AM",
-    estimatedDuration: "3.5 hours",
-    collectionPoints: 24,
-    completedPoints: 16,
-    assignedVehicle: "TU-5678-CD",
-    assignedEmployees: ["Ahmed Ben Salem", "Fatima B."],
-    distance: "18.5 km",
-  },
-  {
-    id: "2",
-    name: "Morning Collection - Central",
-    status: "in_progress",
-    zone: "Central District",
-    scheduledTime: "06:30 AM",
-    estimatedDuration: "2.5 hours",
-    collectionPoints: 18,
-    completedPoints: 12,
-    assignedVehicle: "TU-3456-GH",
-    assignedEmployees: ["Karim Souissi"],
-    distance: "12.3 km",
-  },
-  {
-    id: "3",
-    name: "Afternoon Collection - South",
-    status: "scheduled",
-    zone: "South District",
-    scheduledTime: "02:00 PM",
-    estimatedDuration: "4 hours",
-    collectionPoints: 32,
-    completedPoints: 0,
-    assignedVehicle: "TU-1234-AB",
-    assignedEmployees: ["Sami Mejri", "Leila H."],
-    distance: "25.8 km",
-  },
-  {
-    id: "4",
-    name: "Evening Collection - Industrial",
-    status: "scheduled",
-    zone: "Industrial Zone",
-    scheduledTime: "06:00 PM",
-    estimatedDuration: "3 hours",
-    collectionPoints: 15,
-    completedPoints: 0,
-    assignedVehicle: "TU-7890-IJ",
-    assignedEmployees: ["Mohamed T."],
-    distance: "20.1 km",
-  },
-  {
-    id: "5",
-    name: "Yesterday - Market Area",
-    status: "completed",
-    zone: "Market District",
-    scheduledTime: "Yesterday 08:00 AM",
-    estimatedDuration: "2 hours",
-    collectionPoints: 12,
-    completedPoints: 12,
-    assignedVehicle: "TU-5678-CD",
-    assignedEmployees: ["Ahmed Ben Salem"],
-    distance: "8.5 km",
-  },
-  {
-    id: "6",
-    name: "Yesterday - Residential East",
-    status: "completed",
-    zone: "East Residential",
-    scheduledTime: "Yesterday 10:00 AM",
-    estimatedDuration: "3 hours",
-    collectionPoints: 28,
-    completedPoints: 28,
-    assignedVehicle: "TU-3456-GH",
-    assignedEmployees: ["Karim Souissi", "Fatima B."],
-    distance: "15.2 km",
-  },
-];
+function transformToFrontend(r: DbRoute): CollectionRoute {
+  return {
+    id: r.id,
+    name: r.name,
+    status: r.status as CollectionRoute["status"],
+    zone: r.zone,
+    scheduledTime: r.scheduledTime,
+    estimatedDuration: r.estimatedDuration,
+    collectionPoints: r.collectionPoints,
+    completedPoints: r.completedPoints,
+    assignedVehicle: r.assignedVehicle ?? undefined,
+    assignedEmployees: r.assignedEmployees,
+    distance: r.distance,
+  };
+}
 
 const routeFormSchema = z.object({
   name: z.string().min(3, "Route name must be at least 3 characters"),
@@ -125,7 +64,7 @@ const routeFormSchema = z.object({
 type RouteFormValues = z.infer<typeof routeFormSchema>;
 
 export default function Routes() {
-  const [routes, setRoutes] = useState(initialRoutes);
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [addDialogOpen, setAddDialogOpen] = useState(false);
@@ -140,6 +79,53 @@ export default function Routes() {
       estimatedDuration: "",
       collectionPoints: "",
       distance: "",
+    },
+  });
+
+  const { data: dbRoutes = [], isLoading } = useQuery<DbRoute[]>({
+    queryKey: ["/api/routes"],
+  });
+
+  const routes = dbRoutes.map(transformToFrontend);
+
+  const createMutation = useMutation({
+    mutationFn: async (values: RouteFormValues) => {
+      const data: InsertRoute = {
+        name: values.name,
+        status: "scheduled",
+        zone: values.zone,
+        scheduledTime: values.scheduledTime,
+        estimatedDuration: values.estimatedDuration,
+        collectionPoints: parseInt(values.collectionPoints),
+        completedPoints: 0,
+        assignedEmployees: [],
+        distance: values.distance,
+      };
+      const res = await apiRequest("POST", "/api/routes", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Route created successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create route", variant: "destructive" });
+    },
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Partial<DbRoute> }) => {
+      const res = await apiRequest("PATCH", `/api/routes/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/routes"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/stats"] });
+      toast({ title: "Route updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update route", variant: "destructive" });
     },
   });
 
@@ -183,35 +169,19 @@ export default function Routes() {
 
   const handleSubmit = (values: RouteFormValues) => {
     if (editingRoute) {
-      setRoutes((prev) =>
-        prev.map((r) =>
-          r.id === editingRoute.id
-            ? {
-                ...r,
-                name: values.name,
-                zone: values.zone,
-                scheduledTime: values.scheduledTime,
-                estimatedDuration: values.estimatedDuration,
-                collectionPoints: parseInt(values.collectionPoints),
-                distance: values.distance,
-              }
-            : r
-        )
-      );
+      updateMutation.mutate({
+        id: editingRoute.id,
+        data: {
+          name: values.name,
+          zone: values.zone,
+          scheduledTime: values.scheduledTime,
+          estimatedDuration: values.estimatedDuration,
+          collectionPoints: parseInt(values.collectionPoints),
+          distance: values.distance,
+        },
+      });
     } else {
-      const newRoute: CollectionRoute = {
-        id: Date.now().toString(),
-        name: values.name,
-        status: "scheduled",
-        zone: values.zone,
-        scheduledTime: values.scheduledTime,
-        estimatedDuration: values.estimatedDuration,
-        collectionPoints: parseInt(values.collectionPoints),
-        completedPoints: 0,
-        assignedEmployees: [],
-        distance: values.distance,
-      };
-      setRoutes((prev) => [...prev, newRoute]);
+      createMutation.mutate(values);
     }
     setAddDialogOpen(false);
     setEditingRoute(undefined);
@@ -219,30 +189,43 @@ export default function Routes() {
   };
 
   const handleStartRoute = (route: CollectionRoute) => {
-    setRoutes((prev) =>
-      prev.map((r) =>
-        r.id === route.id ? { ...r, status: "in_progress" as const } : r
-      )
-    );
+    updateMutation.mutate({ id: route.id, data: { status: "in_progress" } });
   };
 
   const handlePauseRoute = (route: CollectionRoute) => {
-    setRoutes((prev) =>
-      prev.map((r) =>
-        r.id === route.id ? { ...r, status: "scheduled" as const } : r
-      )
-    );
+    updateMutation.mutate({ id: route.id, data: { status: "scheduled" } });
   };
 
   const handleCompleteRoute = (route: CollectionRoute) => {
-    setRoutes((prev) =>
-      prev.map((r) =>
-        r.id === route.id
-          ? { ...r, status: "completed" as const, completedPoints: r.collectionPoints }
-          : r
-      )
-    );
+    updateMutation.mutate({
+      id: route.id,
+      data: { status: "completed", completedPoints: route.collectionPoints },
+    });
   };
+
+  if (isLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <Skeleton className="h-9 w-28 mb-2" />
+            <Skeleton className="h-5 w-56" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <div className="flex items-center gap-4 flex-wrap">
+          <Skeleton className="h-10 w-64" />
+          <Skeleton className="h-10 w-36" />
+        </div>
+        <Skeleton className="h-10 w-80" />
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[...Array(6)].map((_, i) => (
+            <Skeleton key={i} className="h-64" />
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 space-y-6">
