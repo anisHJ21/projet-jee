@@ -1,48 +1,78 @@
 package com.ecocollect.wastemanagement.dto;
 
-import lombok.AllArgsConstructor;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
 public class DashboardStatsResponse {
     private CollectionPointsStats collectionPoints;
     private RoutesStats routes;
     private EmployeesStats employees;
     private AlertsStats alerts;
-    
+
+    public DashboardStatsResponse() {
+    }
+
+    public DashboardStatsResponse(CollectionPointsStats collectionPoints, RoutesStats routes, EmployeesStats employees,
+            AlertsStats alerts) {
+        this.collectionPoints = collectionPoints;
+        this.routes = routes;
+        this.employees = employees;
+        this.alerts = alerts;
+    }
+
     @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class CollectionPointsStats {
         private Integer total;
         private Integer needingAttention;
+
+        public CollectionPointsStats() {
+        }
+
+        public CollectionPointsStats(Integer total, Integer needingAttention) {
+            this.total = total;
+            this.needingAttention = needingAttention;
+        }
     }
-    
+
     @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class RoutesStats {
         private Integer total;
         private Integer active;
+
+        public RoutesStats() {
+        }
+
+        public RoutesStats(Integer total, Integer active) {
+            this.total = total;
+            this.active = active;
+        }
     }
-    
+
     @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class EmployeesStats {
         private Integer onDuty;
         private Integer available;
+
+        public EmployeesStats() {
+        }
+
+        public EmployeesStats(Integer onDuty, Integer available) {
+            this.onDuty = onDuty;
+            this.available = available;
+        }
     }
-    
+
     @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
     public static class AlertsStats {
         private Integer active;
         private Integer critical;
+
+        public AlertsStats() {
+        }
+
+        public AlertsStats(Integer active, Integer critical) {
+            this.active = active;
+            this.critical = critical;
+        }
     }
 }
-
