@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: waste-management-system
+  
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/ecocollect}
+      database: ecocollect
+  
+  web:
+    cors:
+      allowed-origins: ${CORS_ORIGINS:http://localhost:5173,http://localhost:3000}
+      allowed-methods: GET,POST,PATCH,DELETE,PUT,OPTIONS
+      allowed-headers: "*"
+      allow-credentials: true
+
+server:
+  port: ${PORT:8081}
+
+logging:
+  level:
+    root: INFO
+    com.ecocollect: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%level] [%logger{36}] - %msg%n"
+
